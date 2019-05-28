@@ -1,0 +1,26 @@
+{
+  "name": "Getting Started Example",
+  "version": "1.0",
+  "description": "Build an Extension!",
+  "permissions": ["activeTab", "declarativeContent", "storage"],
+  "options_page": "options.html",
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "web_accessible_resources": [
+    "webdudes.css",
+    "images/web_dude_sprite_sheet.png"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["http://drawvid.com/*"],
+      "run_at": "document_end",
+      "js": ["jquery.min.js", "webdudes.js"]
+    }
+  ],
+  "page_action": {
+    "default_popup": "popup.html"
+  },
+  "manifest_version": 2
+}
