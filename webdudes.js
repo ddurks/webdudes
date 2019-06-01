@@ -45,16 +45,22 @@ const width = 64;
 const height = 65;
 const scaledHeight = 96;
 const scaledWidth = 96;
-var webdude_img = new Image();
-webdude_img.src = chrome.runtime.getURL('images/web_dude_sprite_sheet.png');
 
 //  animation frame
 let frame = 0;
 let pace_starttime = 0;
 let pace_duration = 100;
 
+function generateID(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 // class for small-man sprite
 var WebDude = {
+  userid: 0,
+  sprite: new Image(),
   posx: 0,
   posy: 0,
   speed: 0,
@@ -64,6 +70,8 @@ var WebDude = {
 
   create: function(posx, posy) {
     var webdude = Object.create(this);
+    webdude.userid = generateID(0, 1000000);
+    webdude.sprite.src = chrome.runtime.getURL('images/web_dude_sprite_sheet.png');
     webdude.loop = [0,1,0,2];
     webdude.loop_i = 0;
     webdude.posx = posx;
@@ -71,6 +79,17 @@ var WebDude = {
     webdude.direction = 0;
     webdude.speed = 15;
     return webdude;
+  },
+
+  setID: function(id) {
+    this.userid = id;
+  },
+
+  update: function(posx, posy, direction, loop_i) {
+    this.posx = posx;
+    this.posy = posy;
+    this.direction = direction;
+    this.loop_i = loop_i;
   },
 
   moveUp: function() {
@@ -147,37 +166,79 @@ var KeyState = {
   }
 };
 
-var webdude_1 = WebDude.create(0, 0);
 
-function drawFrame(frameX, frameY, canvasX, canvasY) {
-    canvas.drawImage(webdude_img, frameX * width, frameY * height, width, height, canvasX, canvasY, scaledWidth, scaledHeight);
+var webdude_1 = WebDude.create(0, 0);
+var webdudesMap = new Map();
+
+ws = new WebSocket("wss://localhost:8080/world");
+ws.onopen = function() {
+  console.log("connection opened");
+};
+ws.onmessage = function(evt) {
+  var datalist = evt.data.split(':');
+  var userid = parseInt(datalist[0]);
+  var posx = parseFloat(datalist[1]) * CANVAS_WIDTH;
+  var posy = parseFloat(datalist[2]) * CANVAS_HEIGHT;
+  var direction = datalist[3];
+  var loop_i = datalist[4];
+  var webdudeToUpdate = webdudesMap.get(userid);
+  if (webdudeToUpdate == null) {
+    var newWebDude = WebDude.create(0, 0);
+    newWebDude.setID(userid);
+    webdudesMap.set(userid, newWebDude);
+  } else {
+    webdudeToUpdate.update(posx, posy, direction, loop_i);
+  }
+  console.log(datalist);
+};
+ws.onerror = function(err) {
+  console.log("connection error: " + err);
+};
+
+function drawFrame(sprite, frameX, frameY, canvasX, canvasY) {
+    canvas.drawImage(sprite, frameX * width, frameY * height, width, height, canvasX, canvasY, scaledWidth, scaledHeight);
 };
 
 function drawdude() {
-  console.log(webdude_1.posx, webdude_1.posy);
-  drawFrame(webdude_1.loop[webdude_1.loop_i], webdude_1.direction, webdude_1.posx, webdude_1.posy);
+  //console.log(webdude_1.posx, webdude_1.posy);
+  drawFrame(webdude_1.sprite, webdude_1.loop[webdude_1.loop_i], webdude_1.direction, webdude_1.posx, webdude_1.posy);
+}
+
+function drawdudes() {
+  webdudesMap.forEach( function(webdude, userid, map) {
+    drawFrame(webdude.sprite, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
+  });
 }
 
 function handle_input() {
   if(KeyState.key[2]){
     webdude_1.moveUp();
+    ws.send(constructUpdateMessage(webdude_1));
   }
   if(KeyState.key[3]){
     webdude_1.moveDown();
+    ws.send(constructUpdateMessage(webdude_1));
   }
   if(KeyState.key[0]){
     webdude_1.moveLeft();
+    ws.send(constructUpdateMessage(webdude_1));
   }
   if(KeyState.key[1]){
     webdude_1.moveRight();
+    ws.send(constructUpdateMessage(webdude_1));
   }
 };
+
+function constructUpdateMessage(webdude) {
+  return (webdude.userid + ":" + (webdude.posx/CANVAS_WIDTH).toFixed(3) + ":" + (webdude.posy/CANVAS_HEIGHT).toFixed(3) + ":" + webdude.direction + ":" + webdude.loop_i)
+}
 
 function step() {
   fix_dpi();
   canvas.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   handle_input();
   drawdude();
+  drawdudes();
   window.requestAnimationFrame(step);
 };
 
@@ -188,7 +249,8 @@ function init_game_loop() {
   window.requestAnimationFrame(step);
 };
 
-console.log("W: " + CANVAS_WIDTH, "H: " + CANVAS_HEIGHT)
-webdude_img.onload = function() {
+$(window).on("load", function() {
+  ws.send("test");
+  console.log("W: " + CANVAS_WIDTH, "H: " + CANVAS_HEIGHT)
   init_game_loop();
-};
+});
