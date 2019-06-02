@@ -1,22 +1,18 @@
 {
-  "name": "Getting Started Example",
+  "name": "WWW World",
   "version": "1.0",
-  "description": "Build an Extension!",
+  "description": "World Wide Web World",
   "permissions": ["activeTab", "declarativeContent", "storage"],
   "options_page": "options.html",
-  "background": {
-    "scripts": ["background.js"],
-    "persistent": false
-  },
   "web_accessible_resources": [
-    "webdudes.css",
+    "www_world.css",
     "images/web_dude_sprite_sheet.png"
   ],
   "content_scripts": [
     {
       "matches": ["http://drawvid.com/*"],
       "run_at": "document_idle",
-      "js": ["jquery.min.js", "webdudes.js"]
+      "js": ["jquery.min.js", "www_world.js"]
     }
   ],
   "page_action": {
