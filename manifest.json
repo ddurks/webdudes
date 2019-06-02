@@ -15,7 +15,7 @@
   "content_scripts": [
     {
       "matches": ["http://drawvid.com/*"],
-      "run_at": "document_end",
+      "run_at": "document_idle",
       "js": ["jquery.min.js", "webdudes.js"]
     }
   ],

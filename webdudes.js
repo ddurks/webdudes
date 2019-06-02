@@ -1,5 +1,6 @@
 var CANVAS_WIDTH = $(document).width();
 var CANVAS_HEIGHT = $(document).height();
+var MESSAGE_LIFESPAN = 5;
 var PACE_DURATION_MAX = 3;
 
 console.log("W: " + CANVAS_WIDTH, "H: " + CANVAS_HEIGHT)
@@ -14,35 +15,34 @@ div.attr('id', "canvas-div")
 var canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
 
 $('#canvas-div').append(canvasElement);
-var canvas = canvasElement.get(0).getContext("2d");
-canvas.imageSmoothingEnabled = false;
+var context = canvasElement.get(0).getContext("2d");
+context.imageSmoothingEnabled = false;
 window.addEventListener('resize', function(e){
-  canvas.imageSmoothingEnabled = false;
+  context.imageSmoothingEnabled = false;
 }, false)
 
 var dpi = window.devicePixelRatio;
 function fix_dpi() {
   //create a style object that returns width and height
   canvasElement = document.getElementById("webdudes-canvas");
-    let style = {
-      height() {
-        return +getComputedStyle(canvasElement).getPropertyValue('height').slice(0,-2);
-      },
-      width() {
-        return +getComputedStyle(canvasElement).getPropertyValue('width').slice(0,-2);
-      }
+  let style = {
+    height() {
+      return +getComputedStyle(canvasElement).getPropertyValue('height').slice(0,-2);
+    },
+    width() {
+      return +getComputedStyle(canvasElement).getPropertyValue('width').slice(0,-2);
     }
-  //set the correct attributes for a crystal clear image!
-    CANVAS_WIDTH = style.width() * dpi;
-    CANVAS_HEIGHT = style.height() * dpi;
-    canvasElement.setAttribute('width', style.width() * dpi);
-    canvasElement.setAttribute('height', style.height() * dpi);
   }
+  //set the correct attributes for a crystal clear image!
+  CANVAS_WIDTH = style.width() * dpi;
+  CANVAS_HEIGHT = style.height() * dpi;
+  canvasElement.setAttribute('width', style.width() * dpi);
+  canvasElement.setAttribute('height', style.height() * dpi);
+}
 
 // small-man sprite constants
-const scale = 0.25;
-const width = 64;
 const height = 65;
+const width = 65;
 const scaledHeight = 96;
 const scaledWidth = 96;
 
@@ -67,6 +67,8 @@ var WebDude = {
   direction: 0,
   loop: [],
   loop_i: 0,
+  message: "",
+  message_timestamp: 0,
 
   create: function(posx, posy) {
     var webdude = Object.create(this);
@@ -78,11 +80,14 @@ var WebDude = {
     webdude.posy = posy;
     webdude.direction = 0;
     webdude.speed = 15;
+    webdude.message = "";
+    webdude.message_timestamp = 0;
     return webdude;
   },
 
-  setID: function(id) {
-    this.userid = id;
+  setMessage: function(message) {
+    this.message = message;
+    this.message_timestamp = getTimestampSeconds();
   },
 
   update: function(posx, posy, direction, loop_i) {
@@ -158,54 +163,84 @@ var KeyState = {
         this.key[3] = to;
         break;
 
-      // space bar;
-      case 32:
+      // F Key;
+      case 70:
         this.key[4] = to;
         break;
     }
   }
 };
 
-
 var webdude_1 = WebDude.create(0, 0);
 var webdudesMap = new Map();
+webdudesMap.set(webdude_1.userid, webdude_1);
+
+function handleUpdateMessage(data) {
+  var datalist = data.split(':');
+  var userid = parseInt(datalist[1]);
+  var posx = parseFloat(datalist[2]) * CANVAS_WIDTH;
+  var posy = parseFloat(datalist[3]) * CANVAS_HEIGHT;
+  var direction = parseInt(datalist[4]);
+  var loop_i = parseInt(datalist[5]);
+  var webdudeToUpdate = webdudesMap.get(userid);
+  if (webdudeToUpdate == null) {
+    var newWebDude = WebDude.create(0, 0);
+    newWebDude.userid = userid;
+    webdudesMap.set(userid, newWebDude);
+  } else {
+    webdudeToUpdate.update(posx, posy, direction, loop_i);
+  }
+}
+
+function handleMsgMessage(data) {
+  var datalist = data.split(':');
+  var userid = parseInt(datalist[1]);
+  var msg = datalist[2];
+  var webdudeToUpdate = webdudesMap.get(userid);
+  if (webdudeToUpdate == null) {
+    var newWebDude = WebDude.create(0, 0);
+    newWebDude.userid = userid;
+    newWebDude.setMessage(msg);
+    webdudesMap.set(userid, newWebDude);
+  } else {
+    webdudeToUpdate.setMessage(msg);
+  }
+}
 
 ws = new WebSocket("wss://localhost:8080/world");
 ws.onopen = function() {
   console.log("connection opened");
 };
 ws.onmessage = function(evt) {
-  var datalist = evt.data.split(':');
-  var userid = parseInt(datalist[0]);
-  var posx = parseFloat(datalist[1]) * CANVAS_WIDTH;
-  var posy = parseFloat(datalist[2]) * CANVAS_HEIGHT;
-  var direction = datalist[3];
-  var loop_i = datalist[4];
-  var webdudeToUpdate = webdudesMap.get(userid);
-  if (webdudeToUpdate == null) {
-    var newWebDude = WebDude.create(0, 0);
-    newWebDude.setID(userid);
-    webdudesMap.set(userid, newWebDude);
-  } else {
-    webdudeToUpdate.update(posx, posy, direction, loop_i);
+  var messageType = evt.data.split(':')[0];
+  if(messageType == "U") {
+    handleUpdateMessage(evt.data);
+  } else if (messageType == "M") {
+    handleMsgMessage(evt.data);
   }
-  console.log(datalist);
 };
 ws.onerror = function(err) {
   console.log("connection error: " + err);
 };
 
-function drawFrame(sprite, frameX, frameY, canvasX, canvasY) {
-    canvas.drawImage(sprite, frameX * width, frameY * height, width, height, canvasX, canvasY, scaledWidth, scaledHeight);
-};
-
-function drawdude() {
-  //console.log(webdude_1.posx, webdude_1.posy);
-  drawFrame(webdude_1.sprite, webdude_1.loop[webdude_1.loop_i], webdude_1.direction, webdude_1.posx, webdude_1.posy);
+function drawText(message, x, y) {
+  context.font = "25px Arial";
+  context.textAlign = "center";
+  context.fillText(message, x, y)
+}
+function drawMessage(webdude){
+  drawText(webdude.message, webdude.posx + (scaledWidth/2), webdude.posy - 5);
 }
 
+function drawFrame(sprite, frameX, frameY, canvasX, canvasY) {
+    context.drawImage(sprite, frameX * width, frameY * height, width, height, canvasX, canvasY, scaledWidth, scaledHeight);
+};
 function drawdudes() {
+  var curr_timestamp = getTimestampSeconds();
   webdudesMap.forEach( function(webdude, userid, map) {
+    if (curr_timestamp - webdude.message_timestamp < MESSAGE_LIFESPAN) {
+      drawMessage(webdude);
+    }
     drawFrame(webdude.sprite, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
   });
 }
@@ -227,30 +262,45 @@ function handle_input() {
     webdude_1.moveRight();
     ws.send(constructUpdateMessage(webdude_1));
   }
+  if(KeyState.key[4]){
+    webdude_1.setMessage("fuck!");
+    ws.send(constructMsgMessage(webdude_1.userid, "fuck!"));
+  }
 };
 
 function constructUpdateMessage(webdude) {
-  return (webdude.userid + ":" + (webdude.posx/CANVAS_WIDTH).toFixed(3) + ":" + (webdude.posy/CANVAS_HEIGHT).toFixed(3) + ":" + webdude.direction + ":" + webdude.loop_i)
+  return ("U:" + webdude.userid + ":" + (webdude.posx/CANVAS_WIDTH).toFixed(3) + ":" + (webdude.posy/CANVAS_HEIGHT).toFixed(3) + ":" + webdude.direction + ":" + webdude.loop_i);
 }
 
-function step() {
-  fix_dpi();
-  canvas.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  handle_input();
-  drawdude();
-  drawdudes();
-  window.requestAnimationFrame(step);
-};
+function constructMsgMessage(userid, msg) {
+  return ("M:" + userid + ":" + msg);
+}
 
+function getTimestampSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function step(timestamp) {
+  fix_dpi();
+  context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  handle_input();
+  drawdudes();
+  window.requestAnimationFrame(function(timestamp) {
+    step(timestamp);
+  });
+};
+var timestamp = getTimestampSeconds();
 function init_game_loop() {
-  drawdude();
+  timestamp = getTimestampSeconds();
+  drawdudes();
   window.addEventListener('keydown', function(e) { KeyState.changeKey(e.keyCode, 1) });
   window.addEventListener('keyup', function(e) { KeyState.changeKey(e.keyCode, 0) });
-  window.requestAnimationFrame(step);
+  window.requestAnimationFrame(function(timestamp) {
+    step(timestamp);
+  });
 };
 
 $(window).on("load", function() {
-  ws.send("test");
   console.log("W: " + CANVAS_WIDTH, "H: " + CANVAS_HEIGHT)
   init_game_loop();
 });
