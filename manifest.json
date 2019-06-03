@@ -4,6 +4,11 @@
   "description": "World Wide Web World",
   "permissions": ["activeTab", "declarativeContent", "storage"],
   "options_page": "options.html",
+  "icons": {
+    "16": "images/icons/icon16.png",
+    "48": "images/icons/icon48.png",
+    "128": "images/icons/icon128.png"
+  },
   "web_accessible_resources": [
     "www_world.css",
     "images/web_dude_sprite_sheet.png"
