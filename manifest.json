@@ -9,9 +9,12 @@
     "48": "images/icons/icon48.png",
     "128": "images/icons/icon128.png"
   },
+  "background": {
+    "scripts": ["background.js"]
+  },
   "web_accessible_resources": [
     "www_world.css",
-    "images/web_dude_sprite_sheet.png"
+    "images/wwww_walrus_spritesheet.png"
   ],
   "content_scripts": [
     {

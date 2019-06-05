@@ -3,3 +3,5 @@
 chrome extension/*VIP Virtual Lounge*
 
 ![webdude.gif](https://github.com/ddurks/www_world/blob/master/images/web_dude.gif)
+
+![walrus.gif](https://github.com/ddurks/www_world/blob/master/images/wwww_walrus.gif)
