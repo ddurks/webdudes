@@ -23,6 +23,7 @@ var webdudesMap = new Map();
 var ws = null;
 var context = null;
 var game_loop_running = false;
+var first_run = true;
 var canvasElement = null;
 
 // Create Canvas //
@@ -328,19 +329,31 @@ function init_game_loop() {
   });
 };
 
+// Listen For Trigger From background.js //
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (!game_loop_running) {
-    console.log("clicked");
+  if (!game_loop_running && first_run) {
+    // Start Up //
+    console.log("Starting Up WWWWorld");
     game_loop_running = true;
+    first_run = false;
     createCanvas();
     createLocalGame();
     createWebSocketConnection();
     console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
     init_game_loop();
-  } else {
-    console.log("clicked");
+  } else if (game_loop_running) {
+    // Pause //
+    console.log("Pausing WWWWorld...");
     game_loop_running = false;
     canvasElement.style.display = 'none';
+  } else {
+    // Restart //
+    console.log("WWWWorld Resumed!");
+    game_loop_running = true;
+    canvasElement.style.display = 'block';
+    createWebSocketConnection();
+    console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
+    init_game_loop();
   }
 });
 
