@@ -18,30 +18,57 @@ style.type = 'text/css';
 style.href = chrome.runtime.getURL('www_world.css');
 (document.head||document.documentElement).appendChild(style);
 
-var webdude_1 = null;
-var webdudesMap = new Map();
 var ws = null;
-var context = null;
 var game_loop_running = false;
 var first_run = true;
-var canvasElement = null;
+var view = null;
+var world = null;
 
-// Create Canvas //
-function createCanvas() {
-  var div = $('<div/>').appendTo('body');
-  div.attr('id', "canvas-div")
-  canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
-  $('#canvas-div').append(canvasElement);
-  context = canvasElement.get(0).getContext("2d");
-  context.imageSmoothingEnabled = true;
-  window.addEventListener('resize', function(e){
-    context.imageSmoothingEnabled = false;
-  }, false)
+var WWWW_View = {
+  canvasElement: null,
+  context: null,
+
+  create: function() {
+    var view = Object.create(this);
+    var div = $('<div/>').appendTo('body');
+    div.attr('id', "canvas-div")
+    view.canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
+    $('#canvas-div').append(view.canvasElement);
+    view.context = view.canvasElement.get(0).getContext("2d");
+    view.context.imageSmoothingEnabled = true;
+    window.addEventListener('resize', function(e){
+      view.context.imageSmoothingEnabled = false;
+    }, false)
+    return view;
+  },
+
+  // Drawing/Rendering on Canvas //
+  draw_text: function(message, x, y) {
+    this.context.font = "25px Arial";
+    this.context.textAlign = "center";
+    this.context.fillText(message, x, y)
+  },
+  draw_message: function(webdude){
+    draw_text(webdude.message, webdude.posx + (player_image_sWidth/2), webdude.posy - 5);
+  },
+
+  draw_player_frame: function(sprite, frameX, frameY, canvasX, canvasY) {
+      context.drawImage(sprite, frameX * player_image_width, frameY * sprite.height, player_image_width, sprite.height, canvasX, canvasY, sprite.width, sprite.height);
+  },
+  draw_players: function(webdudesMap) {
+    var curr_timestamp = getTimestampSeconds();
+    webdudesMap.forEach( function(webdude, userid, map) {
+      if (curr_timestamp - webdude.message_timestamp < MESSAGE_LIFESPAN) {
+        draw_message(webdude);
+      }
+      draw_player_frame(webdude.sprite, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
+    });
+  }
 }
 
 // Fix Canvas Size (prevents image distortion) //
-var dpi = window.devicePixelRatio;
 function fix_dpi() {
+  var dpi = window.devicePixelRatio;
   canvasElement = document.getElementById("webdudes-canvas");
   let style = {
     height() {
@@ -53,8 +80,8 @@ function fix_dpi() {
   }
   CANVAS_WIDTH = style.width() * dpi;
   CANVAS_HEIGHT = style.height() * dpi;
-  canvasElement.setAttribute('width', CANVAS_WIDTH);
-  canvasElement.setAttribute('height', CANVAS_HEIGHT);
+  view.canvasElement.setAttribute('width', CANVAS_WIDTH);
+  view.canvasElement.setAttribute('height', CANVAS_HEIGHT);
 }
 
 // Generate UID for Testint
@@ -64,16 +91,12 @@ function generateID(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// Constants For Player Movement/Rendering //
-const player_image_height = 96;
-const player_image_width = 96;
-const player_image_sHeight = 96;
-const player_image_sWidth = 96;
-
 // Player Class //
 var WebDude = {
   userid: 0,
   sprite: new Image(),
+  height: 96,
+  width: 96,
   posx: 0,
   posy: 0,
   speed: 0,
@@ -154,11 +177,16 @@ var WebDude = {
   },
 };
 
-// Create Local Environment //
-function createLocalGame() {
-  webdude_1 = WebDude.create(0, 0);
-  webdudesMap = new Map();
-  webdudesMap.set(webdude_1.userid, webdude_1);
+var WWWWorld = {
+  webdude_1: null,
+  webdudesMap: new Map(),
+
+  create: function() {
+    var world = Object.create(this);
+    world.webdude_1 = WebDude.create(0, 0);
+    world.webdudesMap.set(world.webdude_1.userid, world.webdude_1);
+    return world;
+  }
 }
 
 // Game Server Connection //
@@ -170,11 +198,11 @@ function handleUpdateMessage(data) {
   var posy = parseFloat(datalist[3]) * CANVAS_HEIGHT;
   var direction = parseInt(datalist[4]);
   var loop_i = parseInt(datalist[5]);
-  var webdudeToUpdate = webdudesMap.get(userid);
+  var webdudeToUpdate = world.webdudesMap.get(userid);
   if (webdudeToUpdate == null) {
     var newWebDude = WebDude.create(0, 0);
     newWebDude.userid = userid;
-    webdudesMap.set(userid, newWebDude);
+    world.webdudesMap.set(userid, newWebDude);
   } else {
     webdudeToUpdate.update(posx, posy, direction, loop_i);
   }
@@ -183,12 +211,12 @@ function handleMsgMessage(data) {
   var datalist = data.split(':');
   var userid = parseInt(datalist[1]);
   var msg = datalist[2];
-  var webdudeToUpdate = webdudesMap.get(userid);
+  var webdudeToUpdate = world.webdudesMap.get(userid);
   if (webdudeToUpdate == null) {
     var newWebDude = WebDude.create(0, 0);
     newWebDude.userid = userid;
     newWebDude.setMessage(msg);
-    webdudesMap.set(userid, newWebDude);
+    world.webdudesMap.set(userid, newWebDude);
   } else {
     webdudeToUpdate.setMessage(msg);
   }
@@ -211,29 +239,6 @@ function createWebSocketConnection() {
   ws.onerror = function(err) {
     console.log("connection error: " + err);
   };
-}
-
-// Drawing/Rendering on Canvas //
-function draw_text(message, x, y) {
-  context.font = "25px Arial";
-  context.textAlign = "center";
-  context.fillText(message, x, y)
-}
-function draw_message(webdude){
-  draw_text(webdude.message, webdude.posx + (player_image_sWidth/2), webdude.posy - 5);
-}
-
-function draw_player_frame(sprite, frameX, frameY, canvasX, canvasY) {
-    context.drawImage(sprite, frameX * player_image_width, frameY * player_image_height, player_image_width, player_image_height, canvasX, canvasY, player_image_sWidth, player_image_sHeight);
-};
-function draw_players() {
-  var curr_timestamp = getTimestampSeconds();
-  webdudesMap.forEach( function(webdude, userid, map) {
-    if (curr_timestamp - webdude.message_timestamp < MESSAGE_LIFESPAN) {
-      draw_message(webdude);
-    }
-    draw_player_frame(webdude.sprite, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
-  });
 }
 
 // KeyState Updater //
@@ -263,24 +268,24 @@ var KeyState = {
 function handle_input() {
   if(KeyState.key[0] || KeyState.key[1] || KeyState.key[2] || KeyState.key[3])
   if(KeyState.key[2]){
-    webdude_1.moveUp();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveUp();
+    //ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[3]){
-    webdude_1.moveDown();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveDown();
+    //ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[0]){
-    webdude_1.moveLeft();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveLeft();
+    //ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[1]){
-    webdude_1.moveRight();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveRight();
+    //ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[4]){
-    webdude_1.setMessage("fuck!");
-    //ws.send(constructMsgMessage(webdude_1.userid, "fuck!"));
+    world.webdude_1.setMessage("fuck!");
+    //ws.send(constructMsgMessage(world.webdude_1.userid, "fuck!"));
   }
 };
 
@@ -298,7 +303,7 @@ function getTimestampSeconds() {
 
 // Reset User Sprite to the First Frame //
 function resetUserSprite() {
-  webdude_1.loop_i = 0;
+  world.webdude_1.loop_i = 0;
 }
 
 // Step the Game one Frame //
@@ -309,7 +314,7 @@ function step(timestamp) {
   fix_dpi();
   context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   handle_input();
-  draw_players();
+  view.draw_players(world.webdudesMap);
   window.requestAnimationFrame(function(timestamp) {
     step(timestamp);
   });
@@ -336,8 +341,8 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     console.log("Starting Up WWWWorld");
     game_loop_running = true;
     first_run = false;
-    createCanvas();
-    createLocalGame();
+    view = WWWW_View.create();
+    world = WWWWorld.create();
     createWebSocketConnection();
     console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
     init_game_loop();
