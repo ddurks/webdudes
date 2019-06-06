@@ -18,13 +18,11 @@
   ],
   "content_scripts": [
     {
-      "matches": ["http://drawvid.com/*"],
+      "matches": ["http://*/*", "https://*/*"],
       "run_at": "document_idle",
       "js": ["jquery.min.js", "www_world.js"]
     }
   ],
-  "page_action": {
-    "default_popup": "popup.html"
-  },
+  "browser_action" : {},
   "manifest_version": 2
 }

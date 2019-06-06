@@ -18,16 +18,25 @@ style.type = 'text/css';
 style.href = chrome.runtime.getURL('www_world.css');
 (document.head||document.documentElement).appendChild(style);
 
+var webdude_1 = null;
+var webdudesMap = new Map();
+var ws = null;
+var context = null;
+var game_loop_running = false;
+var canvasElement = null;
+
 // Create Canvas //
-var div = $('<div/>').appendTo('body');
-div.attr('id', "canvas-div")
-var canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
-$('#canvas-div').append(canvasElement);
-var context = canvasElement.get(0).getContext("2d");
-context.imageSmoothingEnabled = true;
-window.addEventListener('resize', function(e){
-  context.imageSmoothingEnabled = false;
-}, false)
+function createCanvas() {
+  var div = $('<div/>').appendTo('body');
+  div.attr('id', "canvas-div")
+  canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
+  $('#canvas-div').append(canvasElement);
+  context = canvasElement.get(0).getContext("2d");
+  context.imageSmoothingEnabled = true;
+  window.addEventListener('resize', function(e){
+    context.imageSmoothingEnabled = false;
+  }, false)
+}
 
 // Fix Canvas Size (prevents image distortion) //
 var dpi = window.devicePixelRatio;
@@ -145,9 +154,11 @@ var WebDude = {
 };
 
 // Create Local Environment //
-var webdude_1 = WebDude.create(0, 0);
-var webdudesMap = new Map();
-webdudesMap.set(webdude_1.userid, webdude_1);
+function createLocalGame() {
+  webdude_1 = WebDude.create(0, 0);
+  webdudesMap = new Map();
+  webdudesMap.set(webdude_1.userid, webdude_1);
+}
 
 // Game Server Connection //
 // *handlers* //
@@ -183,21 +194,23 @@ function handleMsgMessage(data) {
 }
 
 // Create WebSocket Connection //
-ws = new WebSocket("wss://localhost:8080/world");
-ws.onopen = function() {
-  console.log("connection opened");
-};
-ws.onmessage = function(evt) {
-  var messageType = evt.data.split(':')[0];
-  if(messageType == "U") {
-    handleUpdateMessage(evt.data);
-  } else if (messageType == "M") {
-    handleMsgMessage(evt.data);
-  }
-};
-ws.onerror = function(err) {
-  console.log("connection error: " + err);
-};
+function createWebSocketConnection() {
+  ws = new WebSocket("wss://localhost:8080/world");
+  ws.onopen = function() {
+    console.log("connection opened");
+  };
+  ws.onmessage = function(evt) {
+    var messageType = evt.data.split(':')[0];
+    if(messageType == "U") {
+      handleUpdateMessage(evt.data);
+    } else if (messageType == "M") {
+      handleMsgMessage(evt.data);
+    }
+  };
+  ws.onerror = function(err) {
+    console.log("connection error: " + err);
+  };
+}
 
 // Drawing/Rendering on Canvas //
 function draw_text(message, x, y) {
@@ -289,6 +302,9 @@ function resetUserSprite() {
 
 // Step the Game one Frame //
 function step(timestamp) {
+  if (!game_loop_running) {
+    return;
+  }
   fix_dpi();
   context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   handle_input();
@@ -312,8 +328,24 @@ function init_game_loop() {
   });
 };
 
-// Wait For Window (and images) Load before Game Loop Start //
-$(window).on("load", function() {
-  console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
-  init_game_loop();
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+  if (!game_loop_running) {
+    console.log("clicked");
+    game_loop_running = true;
+    createCanvas();
+    createLocalGame();
+    createWebSocketConnection();
+    console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
+    init_game_loop();
+  } else {
+    console.log("clicked");
+    game_loop_running = false;
+    canvasElement.style.display = 'none';
+  }
 });
+
+// Wait For Window (and images) Load before Game Loop Start //
+// $(window).on("load", function() {
+//   console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
+//   init_game_loop();
+// });
