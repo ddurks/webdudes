@@ -24,16 +24,22 @@ var first_run = true;
 var view = null;
 var world = null;
 
-var WWWW_View = {
-  canvasElement: null,
-  context: null,
-
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||             * GAME VIEW *               ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+const WWWW_View = {
   create: function() {
     var view = Object.create(this);
     var div = $('<div/>').appendTo('body');
     div.attr('id', "canvas-div")
+    // canvasElement
     view.canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
     $('#canvas-div').append(view.canvasElement);
+    // context
     view.context = view.canvasElement.get(0).getContext("2d");
     view.context.imageSmoothingEnabled = true;
     window.addEventListener('resize', function(e){
@@ -49,25 +55,24 @@ var WWWW_View = {
     this.context.fillText(message, x, y)
   },
   draw_message: function(webdude){
-    draw_text(webdude.message, webdude.posx + (player_image_sWidth/2), webdude.posy - 5);
+    this.draw_text(webdude.message, webdude.posx + (webdude.width/2), webdude.posy - 5);
   },
-
   draw_player_frame: function(sprite, frameX, frameY, canvasX, canvasY) {
-      context.drawImage(sprite, frameX * player_image_width, frameY * sprite.height, player_image_width, sprite.height, canvasX, canvasY, sprite.width, sprite.height);
+    this.context.drawImage(sprite.spritesheet, frameX * sprite.width, frameY * sprite.height, sprite.width, sprite.height, canvasX, canvasY, sprite.width * sprite.scale, sprite.height * sprite.scale);
   },
   draw_players: function(webdudesMap) {
     var curr_timestamp = getTimestampSeconds();
     webdudesMap.forEach( function(webdude, userid, map) {
       if (curr_timestamp - webdude.message_timestamp < MESSAGE_LIFESPAN) {
-        draw_message(webdude);
+        this.draw_message(webdude);
       }
-      draw_player_frame(webdude.sprite, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
-    });
+      this.draw_player_frame(webdude, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
+    }.bind(this));
   }
 }
 
-// Fix Canvas Size (prevents image distortion) //
-function fix_dpi() {
+// Fix Canvas Size Util (prevents image distortion) //
+function fix_dpi(view) {
   var dpi = window.devicePixelRatio;
   canvasElement = document.getElementById("webdudes-canvas");
   let style = {
@@ -80,38 +85,34 @@ function fix_dpi() {
   }
   CANVAS_WIDTH = style.width() * dpi;
   CANVAS_HEIGHT = style.height() * dpi;
-  view.canvasElement.setAttribute('width', CANVAS_WIDTH);
-  view.canvasElement.setAttribute('height', CANVAS_HEIGHT);
+  view.canvasElement[0].setAttribute('width', CANVAS_WIDTH);
+  view.canvasElement[0].setAttribute('height', CANVAS_HEIGHT);
 }
 
-// Generate UID for Testint
+// Generate UID Util for Testing
 function generateID(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// Player Class //
-var WebDude = {
-  userid: 0,
-  sprite: new Image(),
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||              * PLAYER *                 ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+const WebDude = {
+  spritesheet: new Image(),
   height: 96,
   width: 96,
-  posx: 0,
-  posy: 0,
-  speed: 0,
-  direction: 0,
-  loop: [],
-  walking_loop: [],
-  jumping_loop: [],
-  loop_i: 0,
-  message: "",
-  message_timestamp: 0,
+  scale: 1,
 
   create: function(posx, posy) {
     var webdude = Object.create(this);
     webdude.userid = generateID(0, 1000000); // Random nuumber for testing purposes
-    webdude.sprite.src = chrome.runtime.getURL('images/wwww_walrus_spritesheet.png');
+    webdude.spritesheet.src = chrome.runtime.getURL('images/wwww_walrus_spritesheet.png');
     webdude.posx = posx;
     webdude.posy = posy;
     webdude.walking_loop = [0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,2,2,2,2,2];
@@ -145,7 +146,7 @@ var WebDude = {
   },
 
   moveRight: function() {
-    if(this.posx < CANVAS_WIDTH - player_image_sWidth) {
+    if(this.posx < CANVAS_WIDTH) {
       this.posx = this.posx + this.speed;
       this.animationFrame();
       this.direction = 1;
@@ -153,7 +154,7 @@ var WebDude = {
   },
 
   moveDown: function() {
-    if (this.posy < CANVAS_HEIGHT - player_image_sHeight ) { 
+    if (this.posy < CANVAS_HEIGHT) { 
       this.posy = this.posy + this.speed;
       this.animationFrame();
       this.direction = 0;
@@ -177,6 +178,13 @@ var WebDude = {
   },
 };
 
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||             * GAME MODEL *              ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
 var WWWWorld = {
   webdude_1: null,
   webdudesMap: new Map(),
@@ -189,7 +197,14 @@ var WWWWorld = {
   }
 }
 
-// Game Server Connection //
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||      * GAME SERVER CONNECTION *         ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+
 // *handlers* //
 function handleUpdateMessage(data) {
   var datalist = data.split(':');
@@ -241,6 +256,14 @@ function createWebSocketConnection() {
   };
 }
 
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||            * USER INPUT *               ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+
 // KeyState Updater //
 var KeyState = {
   key: [0,0,0,0],
@@ -269,23 +292,23 @@ function handle_input() {
   if(KeyState.key[0] || KeyState.key[1] || KeyState.key[2] || KeyState.key[3])
   if(KeyState.key[2]){
     world.webdude_1.moveUp();
-    //ws.send(constructUpdateMessage(world.webdude_1));
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[3]){
     world.webdude_1.moveDown();
-    //ws.send(constructUpdateMessage(world.webdude_1));
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[0]){
     world.webdude_1.moveLeft();
-    //ws.send(constructUpdateMessage(world.webdude_1));
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[1]){
     world.webdude_1.moveRight();
-    //ws.send(constructUpdateMessage(world.webdude_1));
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[4]){
     world.webdude_1.setMessage("fuck!");
-    //ws.send(constructMsgMessage(world.webdude_1.userid, "fuck!"));
+    // ws.send(constructMsgMessage(world.webdude_1.userid, "fuck!"));
   }
 };
 
@@ -296,6 +319,15 @@ function constructUpdateMessage(webdude) {
 function constructMsgMessage(userid, msg) {
   return ("M:" + userid + ":" + msg);
 }
+
+
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||             * GAME LOOP *               ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
 
 function getTimestampSeconds() {
   return Math.floor(Date.now() / 1000);
@@ -311,8 +343,8 @@ function step(timestamp) {
   if (!game_loop_running) {
     return;
   }
-  fix_dpi();
-  context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  fix_dpi(view);
+  view.context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   handle_input();
   view.draw_players(world.webdudesMap);
   window.requestAnimationFrame(function(timestamp) {
@@ -334,11 +366,21 @@ function init_game_loop() {
   });
 };
 
+
+/*
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||       * GAME STATE CONTROLLER *         ||
+||      (called from background.js)        ||
+||             via icon click              ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+*/
 // Listen For Trigger From background.js //
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   if (!game_loop_running && first_run) {
     // Start Up //
-    console.log("Starting Up WWWWorld");
+    console.log("⨀ Starting Up WWWWorld ⨀");
     game_loop_running = true;
     first_run = false;
     view = WWWW_View.create();
@@ -348,12 +390,12 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     init_game_loop();
   } else if (game_loop_running) {
     // Pause //
-    console.log("Pausing WWWWorld...");
+    console.log("! Pausing WWWWorld... !");
     game_loop_running = false;
     canvasElement.style.display = 'none';
   } else {
     // Restart //
-    console.log("WWWWorld Resumed!");
+    console.log("⨀ WWWWorld Resumed! ⨀");
     game_loop_running = true;
     canvasElement.style.display = 'block';
     createWebSocketConnection();
@@ -361,9 +403,3 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     init_game_loop();
   }
 });
-
-// Wait For Window (and images) Load before Game Loop Start //
-// $(window).on("load", function() {
-//   console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
-//   init_game_loop();
-// });
