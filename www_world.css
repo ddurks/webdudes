@@ -1,5 +1,6 @@
 #webdudes-canvas {
   all: initial;
+  z-index: 2147483646;
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;

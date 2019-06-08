@@ -18,30 +18,62 @@ style.type = 'text/css';
 style.href = chrome.runtime.getURL('www_world.css');
 (document.head||document.documentElement).appendChild(style);
 
-var webdude_1 = null;
-var webdudesMap = new Map();
 var ws = null;
-var context = null;
 var game_loop_running = false;
 var first_run = true;
-var canvasElement = null;
+var view = null;
+var world = null;
 
-// Create Canvas //
-function createCanvas() {
-  var div = $('<div/>').appendTo('body');
-  div.attr('id', "canvas-div")
-  canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
-  $('#canvas-div').append(canvasElement);
-  context = canvasElement.get(0).getContext("2d");
-  context.imageSmoothingEnabled = true;
-  window.addEventListener('resize', function(e){
-    context.imageSmoothingEnabled = false;
-  }, false)
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||             * GAME VIEW *               ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+const WWWW_View = {
+  create: function() {
+    var view = Object.create(this);
+    var div = $('<div/>').appendTo('body');
+    div.attr('id', "canvas-div")
+    // canvasElement
+    view.canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
+    $('#canvas-div').append(view.canvasElement);
+    // context
+    view.context = view.canvasElement.get(0).getContext("2d");
+    view.context.imageSmoothingEnabled = true;
+    window.addEventListener('resize', function(e){
+      view.context.imageSmoothingEnabled = false;
+    }, false)
+    return view;
+  },
+
+  // Drawing/Rendering on Canvas //
+  draw_text: function(message, x, y) {
+    this.context.font = "25px Arial";
+    this.context.textAlign = "center";
+    this.context.fillText(message, x, y)
+  },
+  draw_message: function(webdude){
+    this.draw_text(webdude.message, webdude.posx + (webdude.width/2), webdude.posy - 5);
+  },
+  draw_player_frame: function(sprite, frameX, frameY, canvasX, canvasY) {
+    this.context.drawImage(sprite.spritesheet, frameX * sprite.width, frameY * sprite.height, sprite.width, sprite.height, canvasX, canvasY, sprite.width * sprite.scale, sprite.height * sprite.scale);
+  },
+  draw_players: function(webdudesMap) {
+    var curr_timestamp = getTimestampSeconds();
+    webdudesMap.forEach( function(webdude, userid, map) {
+      if (curr_timestamp - webdude.message_timestamp < MESSAGE_LIFESPAN) {
+        this.draw_message(webdude);
+      }
+      this.draw_player_frame(webdude, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
+    }.bind(this));
+  }
 }
 
-// Fix Canvas Size (prevents image distortion) //
-var dpi = window.devicePixelRatio;
-function fix_dpi() {
+// Fix Canvas Size Util (prevents image distortion) //
+function fix_dpi(view) {
+  var dpi = window.devicePixelRatio;
   canvasElement = document.getElementById("webdudes-canvas");
   let style = {
     height() {
@@ -53,42 +85,34 @@ function fix_dpi() {
   }
   CANVAS_WIDTH = style.width() * dpi;
   CANVAS_HEIGHT = style.height() * dpi;
-  canvasElement.setAttribute('width', CANVAS_WIDTH);
-  canvasElement.setAttribute('height', CANVAS_HEIGHT);
+  view.canvasElement[0].setAttribute('width', CANVAS_WIDTH);
+  view.canvasElement[0].setAttribute('height', CANVAS_HEIGHT);
 }
 
-// Generate UID for Testint
+// Generate UID Util for Testing
 function generateID(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// Constants For Player Movement/Rendering //
-const player_image_height = 96;
-const player_image_width = 96;
-const player_image_sHeight = 96;
-const player_image_sWidth = 96;
-
-// Player Class //
-var WebDude = {
-  userid: 0,
-  sprite: new Image(),
-  posx: 0,
-  posy: 0,
-  speed: 0,
-  direction: 0,
-  loop: [],
-  walking_loop: [],
-  jumping_loop: [],
-  loop_i: 0,
-  message: "",
-  message_timestamp: 0,
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||              * PLAYER *                 ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+const WebDude = {
+  spritesheet: new Image(),
+  height: 96,
+  width: 96,
+  scale: 1,
 
   create: function(posx, posy) {
     var webdude = Object.create(this);
     webdude.userid = generateID(0, 1000000); // Random nuumber for testing purposes
-    webdude.sprite.src = chrome.runtime.getURL('images/wwww_walrus_spritesheet.png');
+    webdude.spritesheet.src = chrome.runtime.getURL('images/wwww_walrus_spritesheet.png');
     webdude.posx = posx;
     webdude.posy = posy;
     webdude.walking_loop = [0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,2,2,2,2,2];
@@ -122,7 +146,7 @@ var WebDude = {
   },
 
   moveRight: function() {
-    if(this.posx < CANVAS_WIDTH - player_image_sWidth) {
+    if(this.posx < CANVAS_WIDTH) {
       this.posx = this.posx + this.speed;
       this.animationFrame();
       this.direction = 1;
@@ -130,7 +154,7 @@ var WebDude = {
   },
 
   moveDown: function() {
-    if (this.posy < CANVAS_HEIGHT - player_image_sHeight ) { 
+    if (this.posy < CANVAS_HEIGHT) { 
       this.posy = this.posy + this.speed;
       this.animationFrame();
       this.direction = 0;
@@ -154,14 +178,33 @@ var WebDude = {
   },
 };
 
-// Create Local Environment //
-function createLocalGame() {
-  webdude_1 = WebDude.create(0, 0);
-  webdudesMap = new Map();
-  webdudesMap.set(webdude_1.userid, webdude_1);
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||             * GAME MODEL *              ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+var WWWWorld = {
+  webdude_1: null,
+  webdudesMap: new Map(),
+
+  create: function() {
+    var world = Object.create(this);
+    world.webdude_1 = WebDude.create(0, 0);
+    world.webdudesMap.set(world.webdude_1.userid, world.webdude_1);
+    return world;
+  }
 }
 
-// Game Server Connection //
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||      * GAME SERVER CONNECTION *         ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+
 // *handlers* //
 function handleUpdateMessage(data) {
   var datalist = data.split(':');
@@ -170,11 +213,11 @@ function handleUpdateMessage(data) {
   var posy = parseFloat(datalist[3]) * CANVAS_HEIGHT;
   var direction = parseInt(datalist[4]);
   var loop_i = parseInt(datalist[5]);
-  var webdudeToUpdate = webdudesMap.get(userid);
+  var webdudeToUpdate = world.webdudesMap.get(userid);
   if (webdudeToUpdate == null) {
     var newWebDude = WebDude.create(0, 0);
     newWebDude.userid = userid;
-    webdudesMap.set(userid, newWebDude);
+    world.webdudesMap.set(userid, newWebDude);
   } else {
     webdudeToUpdate.update(posx, posy, direction, loop_i);
   }
@@ -183,12 +226,12 @@ function handleMsgMessage(data) {
   var datalist = data.split(':');
   var userid = parseInt(datalist[1]);
   var msg = datalist[2];
-  var webdudeToUpdate = webdudesMap.get(userid);
+  var webdudeToUpdate = world.webdudesMap.get(userid);
   if (webdudeToUpdate == null) {
     var newWebDude = WebDude.create(0, 0);
     newWebDude.userid = userid;
     newWebDude.setMessage(msg);
-    webdudesMap.set(userid, newWebDude);
+    world.webdudesMap.set(userid, newWebDude);
   } else {
     webdudeToUpdate.setMessage(msg);
   }
@@ -213,28 +256,13 @@ function createWebSocketConnection() {
   };
 }
 
-// Drawing/Rendering on Canvas //
-function draw_text(message, x, y) {
-  context.font = "25px Arial";
-  context.textAlign = "center";
-  context.fillText(message, x, y)
-}
-function draw_message(webdude){
-  draw_text(webdude.message, webdude.posx + (player_image_sWidth/2), webdude.posy - 5);
-}
-
-function draw_player_frame(sprite, frameX, frameY, canvasX, canvasY) {
-    context.drawImage(sprite, frameX * player_image_width, frameY * player_image_height, player_image_width, player_image_height, canvasX, canvasY, player_image_sWidth, player_image_sHeight);
-};
-function draw_players() {
-  var curr_timestamp = getTimestampSeconds();
-  webdudesMap.forEach( function(webdude, userid, map) {
-    if (curr_timestamp - webdude.message_timestamp < MESSAGE_LIFESPAN) {
-      draw_message(webdude);
-    }
-    draw_player_frame(webdude.sprite, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
-  });
-}
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||            * USER INPUT *               ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
 
 // KeyState Updater //
 var KeyState = {
@@ -263,24 +291,24 @@ var KeyState = {
 function handle_input() {
   if(KeyState.key[0] || KeyState.key[1] || KeyState.key[2] || KeyState.key[3])
   if(KeyState.key[2]){
-    webdude_1.moveUp();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveUp();
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[3]){
-    webdude_1.moveDown();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveDown();
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[0]){
-    webdude_1.moveLeft();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveLeft();
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[1]){
-    webdude_1.moveRight();
-    //ws.send(constructUpdateMessage(webdude_1));
+    world.webdude_1.moveRight();
+    // ws.send(constructUpdateMessage(world.webdude_1));
   }
   if(KeyState.key[4]){
-    webdude_1.setMessage("fuck!");
-    //ws.send(constructMsgMessage(webdude_1.userid, "fuck!"));
+    world.webdude_1.setMessage("fuck!");
+    // ws.send(constructMsgMessage(world.webdude_1.userid, "fuck!"));
   }
 };
 
@@ -292,13 +320,22 @@ function constructMsgMessage(userid, msg) {
   return ("M:" + userid + ":" + msg);
 }
 
+
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||             * GAME LOOP *               ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+
 function getTimestampSeconds() {
   return Math.floor(Date.now() / 1000);
 }
 
 // Reset User Sprite to the First Frame //
 function resetUserSprite() {
-  webdude_1.loop_i = 0;
+  world.webdude_1.loop_i = 0;
 }
 
 // Step the Game one Frame //
@@ -306,10 +343,10 @@ function step(timestamp) {
   if (!game_loop_running) {
     return;
   }
-  fix_dpi();
-  context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  fix_dpi(view);
+  view.context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   handle_input();
-  draw_players();
+  view.draw_players(world.webdudesMap);
   window.requestAnimationFrame(function(timestamp) {
     step(timestamp);
   });
@@ -329,26 +366,36 @@ function init_game_loop() {
   });
 };
 
+
+/*
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||       * GAME STATE CONTROLLER *         ||
+||      (called from background.js)        ||
+||             via icon click              ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+*/
 // Listen For Trigger From background.js //
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   if (!game_loop_running && first_run) {
     // Start Up //
-    console.log("Starting Up WWWWorld");
+    console.log("⨀ Starting Up WWWWorld ⨀");
     game_loop_running = true;
     first_run = false;
-    createCanvas();
-    createLocalGame();
+    view = WWWW_View.create();
+    world = WWWWorld.create();
     createWebSocketConnection();
     console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
     init_game_loop();
   } else if (game_loop_running) {
     // Pause //
-    console.log("Pausing WWWWorld...");
+    console.log("! Pausing WWWWorld... !");
     game_loop_running = false;
     canvasElement.style.display = 'none';
   } else {
     // Restart //
-    console.log("WWWWorld Resumed!");
+    console.log("⨀ WWWWorld Resumed! ⨀");
     game_loop_running = true;
     canvasElement.style.display = 'block';
     createWebSocketConnection();
@@ -356,9 +403,3 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     init_game_loop();
   }
 });
-
-// Wait For Window (and images) Load before Game Loop Start //
-// $(window).on("load", function() {
-//   console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
-//   init_game_loop();
-// });
