@@ -1,6 +1,7 @@
 var CANVAS_WIDTH = $(document).width();
 var CANVAS_HEIGHT = $(document).height();
 var MESSAGE_LIFESPAN = 5;
+var GAME_SERVER = "wss://localhost:8080/world";
 var getUrl = window.location;
 var BASE_URL = getUrl.protocol + "//" + getUrl.host + "/" + getUrl.pathname.split('/')[0];
 
@@ -76,6 +77,9 @@ const WWWW_View = {
     this.context.textAlign = "center";
     this.context.fillText(message, x, y)
   },
+  draw_username: function(webdude) {
+    this.draw_text(webdude.username, webdude.posx + (webdude.width/2), webdude.posy + webdude.height + 20);
+  },
   draw_message: function(webdude){
     this.draw_text(webdude.message, webdude.posx + (webdude.width/2), webdude.posy - 5);
   },
@@ -89,6 +93,7 @@ const WWWW_View = {
         this.draw_message(webdude);
       }
       this.draw_player_frame(webdude, webdude.loop[webdude.loop_i], webdude.direction, webdude.posx, webdude.posy);
+      this.draw_username(webdude);
     }.bind(this));
   }
 }
@@ -102,14 +107,19 @@ const WWWW_View = {
  */
 const WebDude = {
   spritesheet: new Image(),
-  height: 96,
-  width: 96,
+  height: 0,
+  width: 0,
   scale: 1,
+  username: "player", //default
 
   create: function(posx, posy) {
     var webdude = Object.create(this);
     webdude.userid = Utility.generateID(0, 1000000); // Random nuumber for testing purposes
     webdude.spritesheet.src = chrome.runtime.getURL('images/wwww_walrus_spritesheet.png');
+    webdude.spritesheet.onload = function(){
+      webdude.height = webdude.spritesheet.height/4;
+      webdude.width = webdude.spritesheet.width/3;
+    }
     webdude.posx = posx;
     webdude.posy = posy;
     webdude.walking_loop = [0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,2,2,2,2,2];
@@ -248,11 +258,11 @@ var WWWW_Window = {
     var posy = parseFloat(datalist[3]) * CANVAS_HEIGHT;
     var direction = parseInt(datalist[4]);
     var loop_i = parseInt(datalist[5]);
-    var webdudeToUpdate = world.webdudesMap.get(userid);
+    var webdudeToUpdate = this.world.webdudesMap.get(userid);
     if (webdudeToUpdate == null) {
       var newWebDude = WebDude.create(0, 0);
       newWebDude.userid = userid;
-      world.webdudesMap.set(userid, newWebDude);
+      this.world.webdudesMap.set(userid, newWebDude);
     } else {
       webdudeToUpdate.update(posx, posy, direction, loop_i);
     }
@@ -262,12 +272,12 @@ var WWWW_Window = {
     var datalist = data.split(':');
     var userid = parseInt(datalist[1]);
     var msg = datalist[2];
-    var webdudeToUpdate = world.webdudesMap.get(userid);
+    var webdudeToUpdate = this.world.webdudesMap.get(userid);
     if (webdudeToUpdate == null) {
       var newWebDude = WebDude.create(0, 0);
       newWebDude.userid = userid;
       newWebDude.setMessage(msg);
-      world.webdudesMap.set(userid, newWebDude);
+      this.world.webdudesMap.set(userid, newWebDude);
     } else {
       webdudeToUpdate.setMessage(msg);
     }
@@ -275,11 +285,11 @@ var WWWW_Window = {
 
   // Create WebSocket Connection //
   createWebSocketConnection: function() {
-    ws = new WebSocket("wss://localhost:8080/world");
-    ws.onopen = function() {
+    this.ws = new WebSocket(GAME_SERVER);
+    this.ws.onopen = function() {
       console.log("connection opened");
     };
-    ws.onmessage = function(evt) {
+    this.ws.onmessage = function(evt) {
       var messageType = evt.data.split(':')[0];
       if(messageType == "U") {
         this.handleUpdateMessage(evt.data);
@@ -287,8 +297,11 @@ var WWWW_Window = {
         this.handleMsgMessage(evt.data);
       }
     }.bind(this);
-    ws.onerror = function(err) {
-      console.log("connection error: " + err);
+    this.ws.onclose = function() {
+      console.log("server disconnected")
+    }
+    this.ws.onerror = function(err) {
+      console.log("connection error");
     };
   },
 
@@ -298,26 +311,26 @@ var WWWW_Window = {
   = == == == == == == == == == == == == == ==
   */
   handle_input: function() {
-    if(this.KeyState.key[0] || this.KeyState.key[1] || this.KeyState.key[2] || this.KeyState.key[3]) {
+    if(this.KeyState.key[0] || this.KeyState.key[1] || this.KeyState.key[2] || this.KeyState.key[3] || this.KeyState.key[4]) {
       if(this.KeyState.key[2]){
         this.world.webdude_1.moveUp();
-        // this.ws.send(constructUpdateMessage(world.webdude_1));
+        // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[3]){
         this.world.webdude_1.moveDown();
-        // this.ws.send(constructUpdateMessage(world.webdude_1));
+        // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[0]){
         this.world.webdude_1.moveLeft();
-        // this.ws.send(constructUpdateMessage(world.webdude_1));
+        // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[1]){
         this.world.webdude_1.moveRight();
-        // this.ws.send(constructUpdateMessage(world.webdude_1));
+        // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[4]){
-        this.world.webdude_1.setMessage("fuck!");
-        // this.ws.send(this.constructMsgMessage(world.webdude_1.userid, "fuck!"));
+        this.world.webdude_1.setMessage("greetings!");
+        // this.ws.send(this.constructMsgMessage(this.world.webdude_1.userid, "fuck!"));
       }
     }
   },
@@ -384,14 +397,14 @@ var WWWW_Window = {
   pause: function() {
     console.log("! Pausing WWWWorld... !");
     this.game_loop_running = false;
-    this.canvasElement.style.display = 'none';
+    this.view.canvasElement[0].style.display = 'none';
   },
 
   restart: function() {
     console.log("⨀ WWWWorld Resumed! ⨀");
     console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
     this.game_loop_running = true;
-    this.canvasElement.style.display = 'block';
+    this.view.canvasElement[0].style.display = 'block';
     this.createWebSocketConnection();
     this.init_game_loop();
   }
@@ -410,7 +423,7 @@ var wwww_window = WWWW_Window.create();
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   if (!wwww_window.game_loop_running && wwww_window.first_run) {
     wwww_window.start();
-  } else if (game_loop_running) {
+  } else if (wwww_window.game_loop_running) {
     wwww_window.pause();
   } else {
     wwww_window.restart();
