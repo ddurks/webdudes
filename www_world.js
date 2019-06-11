@@ -55,19 +55,33 @@ const Utility = {
  = == == == == == == == == == == == == == ==
  */
 const WWWW_View = {
+  context: null,
+  canvasElement: null,
+
   create: function() {
     var view = Object.create(this);
     var div = $('<div/>').appendTo('body');
-    div.attr('id', "canvas-div")
+    div.attr('id', "canvas-div");
     // canvasElement
     view.canvasElement = $('<canvas/>',{'id':'webdudes-canvas'}).width(CANVAS_WIDTH).height(CANVAS_HEIGHT);
     $('#canvas-div').append(view.canvasElement);
+    div = $('<div/>').appendTo('#canvas-div');
+    div.attr('id', 'message-bar');
+    var input = $('<input/>').appendTo('#message-bar');
+    input.attr('type', 'text');
+    input.attr('id', 'message-input');
+    view.messageInput = $('#message-input');
+    input = $('<input/>').appendTo('#message-bar');
+    input.attr('type', 'button');
+    input.attr('id', 'send-button');
+    input.attr('value', 'send');
+    view.sendButton = $('#send-button');
     // context
     view.context = view.canvasElement.get(0).getContext("2d");
-    view.context.imageSmoothingEnabled = true;
+    view.context.imageSmoothingEnabled = false;
     window.addEventListener('resize', function(e){
       view.context.imageSmoothingEnabled = false;
-    }, false)
+    }, false);
     return view;
   },
 
@@ -79,6 +93,9 @@ const WWWW_View = {
   },
   draw_username: function(webdude) {
     this.draw_text(webdude.username, webdude.posx + (webdude.width/2), webdude.posy + webdude.height + 20);
+  },
+  draw_player1_message: function(message) {
+    this.draw_text(message, webdude_1.posx + (webdude_1.width/2), webdude_1.posy - 5);
   },
   draw_message: function(webdude){
     this.draw_text(webdude.message, webdude.posx + (webdude.width/2), webdude.posy - 5);
@@ -116,6 +133,7 @@ const WebDude = {
     var webdude = Object.create(this);
     webdude.userid = Utility.generateID(0, 1000000); // Random nuumber for testing purposes
     webdude.spritesheet.src = chrome.runtime.getURL('images/wwww_walrus_spritesheet.png');
+    // get dimensions of sprite based on standard spritesheet
     webdude.spritesheet.onload = function(){
       webdude.height = webdude.spritesheet.height/4;
       webdude.width = webdude.spritesheet.width/3;
@@ -135,6 +153,7 @@ const WebDude = {
   setMessage: function(message) {
     this.message = message;
     this.message_timestamp = Utility.getTimestampSeconds();
+    return message;
   },
 
   update: function(posx, posy, direction, loop_i) {
@@ -242,8 +261,14 @@ var WWWW_Window = {
   },
 
   create: function() {
-    var window = Object.create(this);
-    return window;
+    var controller = Object.create(this);
+    return controller;
+  },
+
+  addEventListeners: function() {
+    $('#send-button').click(function() {
+      this.view.draw_player_message(this.world.webdude_1.setMessage($('#message-input').val()));
+    }.bind(this));
   },
 
   /*  
@@ -310,7 +335,7 @@ var WWWW_Window = {
   ||            * USER INPUT *               ||
   = == == == == == == == == == == == == == ==
   */
-  handle_input: function() {
+  handle_player_input: function() {
     if(this.KeyState.key[0] || this.KeyState.key[1] || this.KeyState.key[2] || this.KeyState.key[3] || this.KeyState.key[4]) {
       if(this.KeyState.key[2]){
         this.world.webdude_1.moveUp();
@@ -361,7 +386,7 @@ var WWWW_Window = {
     }
     Utility.fix_dpi(this.view);
     this.view.context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    this.handle_input();
+    this.handle_player_input();
     this.view.draw_players(this.world.webdudesMap);
     window.requestAnimationFrame(function(timestamp) {
       this.step(timestamp);
@@ -391,6 +416,7 @@ var WWWW_Window = {
     this.view = WWWW_View.create();
     this.world = WWWW_World.create();
     this.createWebSocketConnection();
+    this.addEventListeners();
     this.init_game_loop();
   },
 

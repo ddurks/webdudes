@@ -5,3 +5,23 @@
   top: 0 !important;
   left: 0 !important;
 }
+
+#message-bar {
+  position: fixed;
+  z-index: 2147483647;
+  right: 10px;
+  bottom: 5px;
+}
+
+#message-input {
+  border-radius: 15px;
+}
+
+#send-button {
+  border-radius: 15px;
+  margin: 1em;
+  color: whitesmoke;
+  background-color:green;
+  border-color: black;
+  border-width: 1px;
+}
