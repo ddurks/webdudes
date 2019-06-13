@@ -84,6 +84,9 @@ const WWWW_View = {
     }, false);
     return view;
   },
+  render: function(world) {
+    this.draw_players_and_messages(world.webdudesMap);
+  },
 
   // Drawing/Rendering on Canvas //
   draw_text: function(message, x, y) {
@@ -103,7 +106,7 @@ const WWWW_View = {
   draw_player_frame: function(sprite, frameX, frameY, canvasX, canvasY) {
     this.context.drawImage(sprite.spritesheet, frameX * sprite.width, frameY * sprite.height, sprite.width, sprite.height, canvasX, canvasY, sprite.width * sprite.scale, sprite.height * sprite.scale);
   },
-  draw_players: function(webdudesMap) {
+  draw_players_and_messages: function(webdudesMap) {
     var curr_timestamp = Utility.getTimestampSeconds();
     webdudesMap.forEach( function(webdude, userid, map) {
       if (curr_timestamp - webdude.message_timestamp < MESSAGE_LIFESPAN) {
@@ -220,9 +223,82 @@ const WWWW_World = {
     world.webdude_1 = WebDude.create(0, 0);
     world.webdudesMap.set(world.webdude_1.userid, world.webdude_1);
     return world;
+  },
+
+  updateWindow: function() {
+
   }
 }
 
+/*  
+ = == == == == == == == == == == == == == ==
+||                                         ||
+||      * GAME SERVER CONNECTION *         ||
+||                                         ||
+ = == == == == == == == == == == == == == ==
+ */
+const WWWW_Connection = {
+  ws: null,
+
+  create: function() {
+    var conn = Object.create(this);
+    return conn;
+  },
+
+  // Create WebSocket Connection //
+  createWebSocketConnection: function() {
+    this.ws = new WebSocket(GAME_SERVER);
+    this.ws.onopen = function() {
+      console.log("connection opened");
+    };
+    this.ws.onmessage = function(evt) {
+      var messageType = evt.data.split(':')[0];
+      if(messageType == "U") {
+        this.handleUpdateMessage(evt.data);
+      } else if (messageType == "M") {
+        this.handleMsgMessage(evt.data);
+      }
+    }.bind(this);
+    this.ws.onclose = function() {
+      console.log("server disconnected")
+    }
+    this.ws.onerror = function(err) {
+      console.log("connection error");
+    };
+  },
+
+  handleUpdateMessage: function(data) {
+    var datalist = data.split(':');
+    var userid = parseInt(datalist[1]);
+    var posx = parseFloat(datalist[2]) * CANVAS_WIDTH;
+    var posy = parseFloat(datalist[3]) * CANVAS_HEIGHT;
+    var direction = parseInt(datalist[4]);
+    var loop_i = parseInt(datalist[5]);
+    var webdudeToUpdate = this.world.webdudesMap.get(userid);
+    if (webdudeToUpdate == null) {
+      var newWebDude = WebDude.create(0, 0);
+      newWebDude.userid = userid;
+      this.world.webdudesMap.set(userid, newWebDude);
+    } else {
+      webdudeToUpdate.update(posx, posy, direction, loop_i);
+    }
+  },
+
+  handleMsgMessage: function(data) {
+    var datalist = data.split(':');
+    var userid = parseInt(datalist[1]);
+    var msg = datalist[2];
+    var webdudeToUpdate = this.world.webdudesMap.get(userid);
+    if (webdudeToUpdate == null) {
+      var newWebDude = WebDude.create(0, 0);
+      newWebDude.userid = userid;
+      newWebDude.setMessage(msg);
+      this.world.webdudesMap.set(userid, newWebDude);
+    } else {
+      webdudeToUpdate.setMessage(msg);
+    }
+  },
+}
 /*  
  = == == == == == == == == == == == == == ==
 ||                                         ||
@@ -231,7 +307,7 @@ const WWWW_World = {
  = == == == == == == == == == == == == == ==
  */
 var WWWW_Window = {
-  ws: null,
+  ws_conn: null,
   game_loop_running: false,
   first_run: true,
   view: null,
@@ -273,88 +349,29 @@ var WWWW_Window = {
 
   /*  
   = == == == == == == == == == == == == == ==
-  ||      * GAME SERVER CONNECTION *         ||
-  = == == == == == == == == == == == == == ==
-  */
-  handleUpdateMessage: function(data) {
-    var datalist = data.split(':');
-    var userid = parseInt(datalist[1]);
-    var posx = parseFloat(datalist[2]) * CANVAS_WIDTH;
-    var posy = parseFloat(datalist[3]) * CANVAS_HEIGHT;
-    var direction = parseInt(datalist[4]);
-    var loop_i = parseInt(datalist[5]);
-    var webdudeToUpdate = this.world.webdudesMap.get(userid);
-    if (webdudeToUpdate == null) {
-      var newWebDude = WebDude.create(0, 0);
-      newWebDude.userid = userid;
-      this.world.webdudesMap.set(userid, newWebDude);
-    } else {
-      webdudeToUpdate.update(posx, posy, direction, loop_i);
-    }
-  },
-
-  handleMsgMessage: function(data) {
-    var datalist = data.split(':');
-    var userid = parseInt(datalist[1]);
-    var msg = datalist[2];
-    var webdudeToUpdate = this.world.webdudesMap.get(userid);
-    if (webdudeToUpdate == null) {
-      var newWebDude = WebDude.create(0, 0);
-      newWebDude.userid = userid;
-      newWebDude.setMessage(msg);
-      this.world.webdudesMap.set(userid, newWebDude);
-    } else {
-      webdudeToUpdate.setMessage(msg);
-    }
-  },
-
-  // Create WebSocket Connection //
-  createWebSocketConnection: function() {
-    this.ws = new WebSocket(GAME_SERVER);
-    this.ws.onopen = function() {
-      console.log("connection opened");
-    };
-    this.ws.onmessage = function(evt) {
-      var messageType = evt.data.split(':')[0];
-      if(messageType == "U") {
-        this.handleUpdateMessage(evt.data);
-      } else if (messageType == "M") {
-        this.handleMsgMessage(evt.data);
-      }
-    }.bind(this);
-    this.ws.onclose = function() {
-      console.log("server disconnected")
-    }
-    this.ws.onerror = function(err) {
-      console.log("connection error");
-    };
-  },
-
-  /*  
-  = == == == == == == == == == == == == == ==
   ||            * USER INPUT *               ||
   = == == == == == == == == == == == == == ==
   */
-  handle_player_input: function() {
+  handle_player_input: function(player1) {
     if(this.KeyState.key[0] || this.KeyState.key[1] || this.KeyState.key[2] || this.KeyState.key[3] || this.KeyState.key[4]) {
       if(this.KeyState.key[2]){
-        this.world.webdude_1.moveUp();
+        player1.moveUp();
         // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[3]){
-        this.world.webdude_1.moveDown();
+        player1.moveDown();
         // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[0]){
-        this.world.webdude_1.moveLeft();
+        player1.moveLeft();
         // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[1]){
-        this.world.webdude_1.moveRight();
+        player1.moveRight();
         // this.ws.send(this.constructUpdateMessage(this.world.webdude_1));
       }
       if(this.KeyState.key[4]){
-        this.world.webdude_1.setMessage("greetings!");
+        player1.setMessage("greetings!");
         // this.ws.send(this.constructMsgMessage(this.world.webdude_1.userid, "fuck!"));
       }
     }
@@ -386,8 +403,8 @@ var WWWW_Window = {
     }
     Utility.fix_dpi(this.view);
     this.view.context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    this.handle_player_input();
-    this.view.draw_players(this.world.webdudesMap);
+    this.handle_player_input(this.world.webdude_1);
+    this.view.render(this.world);
     window.requestAnimationFrame(function(timestamp) {
       this.step(timestamp);
     }.bind(this));
@@ -415,7 +432,8 @@ var WWWW_Window = {
     this.first_run = false;
     this.view = WWWW_View.create();
     this.world = WWWW_World.create();
-    this.createWebSocketConnection();
+    this.ws_conn = WWWW_Connection.create();
+    this.ws_conn.createWebSocketConnection();
     this.addEventListeners();
     this.init_game_loop();
   },
@@ -431,7 +449,7 @@ var WWWW_Window = {
     console.log(BASE_URL, CANVAS_HEIGHT, CANVAS_WIDTH);
     this.game_loop_running = true;
     this.view.canvasElement[0].style.display = 'block';
-    this.createWebSocketConnection();
+    this.ws_conn.createWebSocketConnection();
     this.init_game_loop();
   }
 }
